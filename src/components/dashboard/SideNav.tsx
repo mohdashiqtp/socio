@@ -4,7 +4,6 @@ import { useState } from "react";
 const SideNav = () => {
   // tracks which nav section is currently active
   const [activeSection, setActiveSection] = useState('Feed');
-  const [showMobileActivity, setShowMobileActivity] = useState(false);
 
   // nav items config - easier to maintain and update
   const navItems = [
@@ -32,7 +31,6 @@ const SideNav = () => {
             key={label}
             onClick={() => {
               setActiveSection(label);
-              if (label === 'Activity') setShowMobileActivity(true);
             }}
             className={`
               group flex flex-col items-center relative p-1.5 md:flex-row md:p-3

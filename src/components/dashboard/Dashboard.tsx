@@ -60,9 +60,7 @@ export function Dashboard() {
 
   // Tags and mentions handling
   const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState('');
   const [mentions, setMentions] = useState<string[]>([]);
-  const [mentionInput, setMentionInput] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
 
   // UI state management
@@ -470,7 +468,6 @@ export function Dashboard() {
 
   // Update the button component to be more responsive
   const FollowButton = memo(({
-    userId,
     isFollowing,
     isCurrentUser,
     onToggle
@@ -555,7 +552,6 @@ export function Dashboard() {
                       {/* Avatar and Input */}
                       <div className="flex items-center space-x-4">
                         <div className="w-10 h-10 rounded-full bg-gray-700 flex-shrink-0">
-                          {/* Avatar placeholder */}
                         </div>
                         <textarea
                           placeholder="What's on your mind? Use # for tags and @ for mentions"
@@ -566,7 +562,10 @@ export function Dashboard() {
                         />
                       </div>
 
-                      
+                      {error && (
+                        <div className="text-red-400 text-sm">{error}</div>
+                      )}
+
                       {showTagInput && (
                         <div className="mt-2">
                           <input

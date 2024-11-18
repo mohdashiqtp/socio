@@ -1,12 +1,6 @@
 import { supabase } from "./supabase";
 
-// quick auth check - useful for debugging
-const checkAuthStatus = async () => {
-  const { data: { session }, error } = await supabase.auth.getSession();
-  console.log('Auth Session:', session);
-  console.log('Auth Error:', error);
-  return !!session;
-};
+;
 
 // handles image uploads to supabase storage
 export const uploadImageToSupabase = async (file: File): Promise<string> => {

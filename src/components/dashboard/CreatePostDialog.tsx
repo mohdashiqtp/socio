@@ -10,7 +10,7 @@ interface CreatePostDialogProps {
   onPost: (data: any) => Promise<void>;
 }
 
-export function CreatePostDialog({ open, onClose, currentUserId, onPost }: CreatePostDialogProps) {
+export function CreatePostDialog({ open, onClose, onPost }: CreatePostDialogProps) {
   // Core post state
   const [postContent, setPostContent] = useState('');
   const [postImage, setPostImage] = useState<File | null>(null);

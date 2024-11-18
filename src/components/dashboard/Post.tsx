@@ -9,12 +9,7 @@ const Post = React.memo(({ post, currentUserId, onLike, onShare, onSave }: PostP
   // basic states for user data and loading
   const [userData, setUserData] = useState<any>(null);
   const [imageLoading, setImageLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string>(
-    userData?.avatar_url || 
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(userData?.name || 'User')}&background=random`
-  );
 
   // double tap like feature states
   const [lastTap, setLastTap] = useState<number>(0);
@@ -44,7 +39,6 @@ const Post = React.memo(({ post, currentUserId, onLike, onShare, onSave }: PostP
   const fetchUserData = useCallback(async () => {
     if (!post.user_id) return;
     
-    setProfileLoading(true);
     try {
       const { data: profileData, error } = await supabase
         .from('profiles')
@@ -65,8 +59,6 @@ const Post = React.memo(({ post, currentUserId, onLike, onShare, onSave }: PostP
     } catch (error) {
       console.error('Error fetching user data:', error);
       setError('Error loading profile');
-    } finally {
-      setProfileLoading(false);
     }
   }, [post.user_id]);
 

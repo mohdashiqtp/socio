@@ -1,4 +1,4 @@
-import { Bell, Users } from "lucide-react";
+import { Bell } from "lucide-react";
 import { useState, useCallback, memo, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";

@@ -6,7 +6,7 @@ import { useEffect } from "react"
 import { useNavigate } from 'react-router-dom'
 
 export function SignupForm() {
-  const { user, signInWithGoogle } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
 
   // boot em to dashboard if they're already logged in
@@ -19,7 +19,7 @@ export function SignupForm() {
   // handle the google oauth flow
   const handleGoogleSignIn = async () => {
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const {  error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
