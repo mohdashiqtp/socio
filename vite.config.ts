@@ -7,6 +7,7 @@ export default defineConfig({
   optimizeDeps: {
     include: ['leaflet', 'react-leaflet']
   },
+  base: '/',
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: {
