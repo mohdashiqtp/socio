@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
-import { X, Image, Tag, MapPin, Loader2 } from 'lucide-react';
+import { X, Image, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface CreatePostDialogProps {
@@ -10,7 +10,7 @@ interface CreatePostDialogProps {
   onPost: (data: any) => Promise<void>;
 }
 
-export function CreatePostDialog({ open, onClose, onPost }: CreatePostDialogProps) {
+export function CreatePostDialog({ open, onClose, currentUserId, onPost }: CreatePostDialogProps) {
   // Core post state
   const [postContent, setPostContent] = useState('');
   const [postImage, setPostImage] = useState<File | null>(null);
@@ -27,26 +27,34 @@ export function CreatePostDialog({ open, onClose, onPost }: CreatePostDialogProp
   }>>([]);
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
 
-  // Handles @ mentions while typing
+  
+
+
+  // this handles both @ mentions and # tags while typing
   const handleContentChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const content = e.target.value;
     setPostContent(content);
 
-    const lastWord = content.split(/\s/).pop() || '';
+    const words = content.split(/\s/);
+    const lastWord = words[words.length - 1];
+
+    // if they're trying to @ mention someone
     if (lastWord.startsWith('@') && lastWord.length > 1) {
       const searchTerm = lastWord.slice(1);
       
+      // look up matching users in the db
       const { data: users } = await supabase
         .from('profiles')
         .select('id, username, full_name')
         .ilike('username', `${searchTerm}%`)
-        .limit(5);
-
+        .limit(5); 
       setSuggestedUsers(users || []);
       setShowMentionSuggestions(true);
     } else {
       setShowMentionSuggestions(false);
     }
+
+    
   };
 
   // Add selected user to mentions
@@ -58,19 +66,22 @@ export function CreatePostDialog({ open, onClose, onPost }: CreatePostDialogProp
     setShowMentionSuggestions(false);
   };
 
-  // Submit the post and reset form
+  // when they hit the post button
   const handlePost = async () => {
     if (!postContent.trim()) return;
     
     setIsPosting(true);
     try {
+      // we need to match exactly what the dashboard does
       await onPost({
         content: postContent,
-        image: postImage,
-        tags,
-        mentions,
+        image: postImage, // send the raw file, let the dashboard handle the upload
+        tags: tags.length > 0 ? tags : null,
+        mentions: mentions.length > 0 ? mentions : null,
+        user_id: currentUserId
       });
-      
+
+      // clean up everything after posting
       setPostContent('');
       setPostImage(null);
       setTags([]);
@@ -82,6 +93,29 @@ export function CreatePostDialog({ open, onClose, onPost }: CreatePostDialogProp
       setIsPosting(false);
     }
   };
+
+  // helpful for debugging bucket issues
+  const checkBuckets = async () => {
+    const { data: buckets, error } = await supabase
+      .storage
+      .listBuckets();
+    
+    if (error) {
+      console.error('Uh oh, cant get buckets:', error);
+      return;
+    }
+    
+    console.log('Here are our buckets:', buckets);
+  };
+
+  // lets check what buckets we have when component loads
+  useEffect(() => {
+    checkBuckets();
+  }, []);
+
+  // TODO: Add error handling for failed image uploads
+  // TODO: Add character limit to post content
+  // TODO: Maybe add emoji picker?
 
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50">
@@ -104,7 +138,7 @@ export function CreatePostDialog({ open, onClose, onPost }: CreatePostDialogProp
             {/* Post content input with mentions */}
             <div className="relative">
               <textarea
-                placeholder="What's on your mind? Use @ to mention users"
+                placeholder="What's on your mind? Use @ to mention users and # for tags"
                 value={postContent}
                 onChange={handleContentChange}
                 className="w-full bg-gray-700 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none min-h-[120px]"
@@ -177,12 +211,7 @@ export function CreatePostDialog({ open, onClose, onPost }: CreatePostDialogProp
                 >
                   <Image className="w-5 h-5" />
                 </button>
-                <button className="text-gray-400 hover:text-purple-400">
-                  <Tag className="w-5 h-5" />
-                </button>
-                <button className="text-gray-400 hover:text-purple-400">
-                  <MapPin className="w-5 h-5" />
-                </button>
+                
               </div>
               
               <button

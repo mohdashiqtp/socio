@@ -76,7 +76,7 @@ export const CREATE_POST_MUTATION = gql`
 
 // Add the query definition
 export const GET_POSTS = gql`
-  query GetPosts {
+  query GetPosts($userId: UUID!) {
     postsCollection(
       orderBy: {created_at: DescNullsLast}
     ) {
@@ -96,6 +96,16 @@ export const GET_POSTS = gql`
               }
             }
           }
+        }
+      }
+    }
+    followersCollection(
+      filter: { follower_id: { eq: $userId } }
+    ) {
+      edges {
+        node {
+          follower_id
+          following_id
         }
       }
     }

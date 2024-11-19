@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import {
-  Search,  Heart,  Image,  Tag,  Users,  Loader2, X,  Home, PlusSquare, User
+  Search,  Heart,  Image,   Users,  Loader2, X,  Home, PlusSquare, User
 } from 'lucide-react';
 import Header from '../Header';
 import PostComponent from './Post';
 import { supabase } from '@/lib/supabase';
-import { gql, useQuery, useMutation } from '@apollo/client';
+import { useQuery, useMutation } from '@apollo/client';
 import { uploadImageToSupabase } from '@/lib/impageUpload';
 import SideNav from './SideNav';
 import { ShareDialog } from './ShareDialog';
@@ -27,26 +27,6 @@ import { CREATE_FOLLOW_ACTIVITY } from '@/graphql/mutations/activityMutation';
 import { Post, ShareDialogData } from '@/types/dashboard/dashboard';
 
 
-
-
-
-
-const INTROSPECTION_QUERY = gql`
-  query IntrospectionQuery {
-    __type(name: "posts") {
-      fields {
-        name
-        type {
-          name
-          kind
-        }
-      }
-    }
-  }
-`;
-
-
-
 // Main Dashboard
 export function Dashboard() {
   // User state and authentication
@@ -59,9 +39,7 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   // Tags and mentions handling
-  const [tags, setTags] = useState<string[]>([]);
   const [mentions, setMentions] = useState<string[]>([]);
-  const [showTagInput, setShowTagInput] = useState(false);
 
   // UI state management
   const [shareDialogData, setShareDialogData] = useState<ShareDialogData>({
@@ -77,7 +55,11 @@ export function Dashboard() {
 
   //  Query and Mutations next
   const { loading: postsLoading, error: postsError, data } = useQuery(GET_POSTS, {
-    variables: { userId: currentUserId },
+    variables: { 
+      userId: currentUserId,
+      followingOnly: true,
+      excludeCurrentUser: true  
+    },
     skip: !currentUserId
   });
 
@@ -123,6 +105,9 @@ export function Dashboard() {
           }
         }
       });
+    },
+    onError: (error) => {
+      console.error('GraphQL follow error:', error);
     }
   });
 
@@ -136,6 +121,9 @@ export function Dashboard() {
           }
         }
       });
+    },
+    onError: (error) => {
+      console.error('GraphQL unfollow error:', error);
     }
   });
 
@@ -181,7 +169,7 @@ export function Dashboard() {
     }
   }, []);
 
-  //  useEffect to refetch when needed
+  //  useEffect to refetch 
   useEffect(() => {
     fetchSuggestedUsers();
   }, [fetchSuggestedUsers]);
@@ -190,19 +178,46 @@ export function Dashboard() {
   const posts = useMemo(() => {
     if (!data?.postsCollection?.edges) return [];
 
-    return data.postsCollection.edges.map(({ node: post }: any) => ({
-      id: post.id,
-      content: post.content,
-      created_at: post.created_at,
-      image: post.image,
-      user_id: post.user_id,
-      tags: post.tags || [],
-      likesCollection: post.likesCollection,
-      likes: post.likesCollection?.edges?.length || 0,
-      isLiked: post.likesCollection?.edges?.some(
-        (edge: { node: { user_id: string } }) => edge.node.user_id === currentUserId
-      ) || false
-    }));
+    return data.postsCollection.edges
+      .map(({ node: post }: any) => ({
+        id: post.id,
+        content: post.content,
+        created_at: post.created_at,
+        image: post.image,
+        user_id: post.user_id,
+        tags: post.tags || [],
+        likesCollection: post.likesCollection,
+        likes: post.likesCollection?.edges?.length || 0,
+        isLiked: post.likesCollection?.edges?.some(
+          (edge: { node: { user_id: string } }) => edge.node.user_id === currentUserId
+        ) || false
+      }))
+      .filter((post: Post) => {
+        console.log('Checking post:', post.user_id);
+        
+        // Filter out current user's posts
+        if (post.user_id === currentUserId) {
+          console.log('Filtered out - current user post');
+          return false;
+        }
+        
+        // Check if the post author is being followed by current user
+        const isFollowed = data.followersCollection?.edges?.some(
+          (edge: any) => {
+            console.log('Checking follow relationship:', {
+              following_id: edge.node.following_id,
+              follower_id: edge.node.follower_id,
+              post_user_id: post.user_id
+            });
+            return edge.node.following_id === post.user_id && 
+                   edge.node.follower_id === currentUserId;
+          }
+        );
+        
+        console.log('Is followed:', isFollowed);
+        return isFollowed;
+      });
+
   }, [data, currentUserId]);
 
   //  Callbacks after mutations are defined
@@ -280,9 +295,6 @@ export function Dashboard() {
     };
   }, []);
 
-  const { data: schemaData } = useQuery(INTROSPECTION_QUERY);
-  console.log('Available fields:', schemaData?.__type?.fields);
-
   // Handle the image upload
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -297,9 +309,9 @@ export function Dashboard() {
   };
 
   // Handle post sharing 
-  const handlePost = async () => {
+  const handlePost = async (postData: any) => {
     if (!postContent.trim()) {
-      setError("Please enter some content");
+      setError("Write something first!");
       return;
     }
 
@@ -308,83 +320,35 @@ export function Dashboard() {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error("Not authenticated");
+      if (!session) throw new Error("Not logged in!");
+
+      // This is where the actual image upload happens
+      if (postData.image) {
+        const imageUrl = await uploadImageToSupabase(postData.image);
+        postData.image = imageUrl;
       }
-
-      let imageUrl = null;
-      if (postImage) {
-        imageUrl = await uploadImageToSupabase(postImage);
-      }
-
-      // Process mentions to ensure they exist in the database
-      const validMentions = await Promise.all(
-        mentions.map(async (mention) => {
-          const { data } = await supabase
-            .from('profiles')
-            .select('username')
-            .eq('username', mention)
-            .single();
-          return data?.username;
-        })
-      );
-
-      const filteredMentions = validMentions.filter(Boolean);
 
       await createPost({
-        variables: {
-          content: postContent.trim(),
-          tags: tags.length > 0 ? tags : null,
-          mentions: filteredMentions.length > 0 ? filteredMentions : null,
-          image: imageUrl,
-          user_id: session.user.id
-        }
+        variables: postData
       });
 
-      // Reset form
+      // Reset everything after posting
       setPostContent('');
-      setTags([]);
-      setMentions([]);
       setPostImage(null);
+      setMentions([]);
+      setCreatePostDialogOpen(false);
 
     } catch (error) {
-      console.error("Error creating post:", error);
-      setError("Failed to create post. Please try again.");
+      console.error("Posting failed:", error);
+      setError("Something went wrong while posting");
     } finally {
       setIsPosting(false);
     }
   };
 
-  // Handle the tags
-  const handleTagInput = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const content = e.currentTarget.value;
-    const lastWord = content.split(' ').pop() || '';
+  
 
-    // Handle hashtags
-    if (lastWord.startsWith('#') && lastWord.length > 1) {
-      const tag = lastWord.slice(1);
-      if (e.key === ' ' && !tags.includes(tag)) {
-        setTags([...tags, tag]);
-        setPostContent(content.slice(0, -lastWord.length).trim());
-        e.preventDefault();
-      }
-    }
-
-    // Handle mentions
-    if (lastWord.startsWith('@') && lastWord.length > 1) {
-      const mention = lastWord.slice(1);
-      if (e.key === ' ' && !mentions.includes(mention)) {
-        setMentions([...mentions, mention]);
-        setPostContent(content.slice(0, -lastWord.length).trim());
-        e.preventDefault();
-      }
-    }
-  };
-
-  //  handler for tag button click
-  const handleTagButtonClick = () => {
-    setShowTagInput(!showTagInput);
-  };
+  
 
   useEffect(() => {
     const checkProfiles = async () => {
@@ -402,6 +366,7 @@ export function Dashboard() {
   const handleFollowToggle = useCallback(async (userId: string, isCurrentlyFollowing: boolean) => {
     if (!currentUserId) return;
 
+    // Optimistic UI update
     setSuggestedUsers(prevUsers =>
       prevUsers.map(user =>
         user.id === userId
@@ -412,13 +377,18 @@ export function Dashboard() {
 
     try {
       if (!isCurrentlyFollowing) {
-        const [supabaseResponse] = await Promise.all([
-          supabase
-            .from('followers')
-            .insert({
-              follower_id: currentUserId,
-              following_id: userId
-            }),
+        // First handle Supabase operation
+        const { error: supabaseError } = await supabase
+          .from('followers')
+          .insert({
+            follower_id: currentUserId,
+            following_id: userId
+          });
+
+        if (supabaseError) throw supabaseError;
+
+        // Then handle GraphQL operations
+        await Promise.all([
           followUser({
             variables: {
               followerId: currentUserId,
@@ -432,10 +402,8 @@ export function Dashboard() {
             }
           })
         ]);
-
-        if (supabaseResponse.error) throw supabaseResponse.error;
-
       } else {
+        // First handle Supabase operation
         const { error: supabaseError } = await supabase
           .from('followers')
           .delete()
@@ -446,6 +414,7 @@ export function Dashboard() {
 
         if (supabaseError) throw supabaseError;
 
+        // Then handle GraphQL operations
         await unfollowUser({
           variables: {
             followerId: currentUserId,
@@ -453,9 +422,9 @@ export function Dashboard() {
           }
         });
       }
-
     } catch (error) {
       console.error('Error toggling follow:', error);
+      // Revert UI on error
       setSuggestedUsers(prevUsers =>
         prevUsers.map(user =>
           user.id === userId
@@ -531,6 +500,51 @@ export function Dashboard() {
     };
   }, [currentUserId]);
 
+  // Keeping track of who we can mention
+  const [mentionSuggestions, setMentionSuggestions] = useState<Array<{
+    id: string;
+    full_name: string;
+    avatar_url?: string;
+  }>>([]);
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+
+  // Handle what happens when someone types in the post box
+  const handlePostContentChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const content = e.target.value;
+    setPostContent(content);
+
+    // Look for @ symbol
+    const words = content.split(' ');
+    const lastWord = words[words.length - 1];
+    
+    if (lastWord.startsWith('@')) {
+      const searchTerm = lastWord.slice(1);
+      
+      if (searchTerm.length > 0) {
+        // Find matching users from the database
+        const { data: users } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .ilike('full_name', `${searchTerm}%`)
+          .limit(5);
+
+        setMentionSuggestions(users || []);
+        setShowMentionSuggestions(true);
+      }
+    } else {
+      setShowMentionSuggestions(false);
+    }
+  };
+
+  // When someone picks a user to mention
+  const handleSelectMention = (username: string) => {
+    const words = postContent.split(' ');
+    words[words.length - 1] = `@${username}`;
+    setPostContent(words.join(' ') + ' ');
+    setMentions([...mentions, username]);
+    setShowMentionSuggestions(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-900">
       <Header />
@@ -538,8 +552,10 @@ export function Dashboard() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             {/* Left Sidebar */}
-            <div className="hidden md:block md:col-span-3 h-[calc(100vh-8rem)] sticky top-32">
-              <SideNav />
+            <div className="hidden md:block md:col-span-3 sticky top-32">
+              <div className="bg-gray-800 rounded-lg p-4">
+                <SideNav />
+              </div>
             </div>
 
             {/* Main Content */}
@@ -554,11 +570,10 @@ export function Dashboard() {
                         <div className="w-10 h-10 rounded-full bg-gray-700 flex-shrink-0">
                         </div>
                         <textarea
-                          placeholder="What's on your mind? Use # for tags and @ for mentions"
+                          placeholder="What's on your mind? Use @ to mention people"
                           value={postContent}
-                          onChange={(e) => setPostContent(e.target.value)}
-                          onKeyDown={handleTagInput}
-                          className="w-full bg-gray-700 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none min-h-[60px]"
+                          onChange={handlePostContentChange}
+                          className="w-full bg-gray-700 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />
                       </div>
 
@@ -566,24 +581,22 @@ export function Dashboard() {
                         <div className="text-red-400 text-sm">{error}</div>
                       )}
 
-                      {showTagInput && (
-                        <div className="mt-2">
-                          <input
-                            type="text"
-                            placeholder="Add tag and press Enter (e.g., coding)"
-                            className="w-full bg-gray-700 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                                const newTag = e.currentTarget.value.trim();
-                                if (!tags.includes(newTag)) {
-                                  setTags([...tags, newTag]);
-                                }
-                                e.currentTarget.value = '';
-                                setShowTagInput(false);
-                              }
-                            }}
-                            autoFocus
-                          />
+                      {showMentionSuggestions && mentionSuggestions.length > 0 && (
+                        <div className="absolute mt-1 w-64 bg-gray-800 rounded-lg shadow-lg border border-gray-700 max-h-48 overflow-y-auto z-[100]">
+                          {mentionSuggestions.map((user) => (
+                            <button
+                              key={user.id}
+                              onClick={() => handleSelectMention(user.full_name)}
+                              className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center space-x-2"
+                            >
+                              {user.avatar_url ? (
+                                <img src={user.avatar_url} className="w-6 h-6 rounded-full" alt="" />
+                              ) : (
+                                <div className="w-6 h-6 rounded-full bg-gray-600" />
+                              )}
+                              <span className="text-gray-200">@{user.full_name}</span>
+                            </button>
+                          ))}
                         </div>
                       )}
 
@@ -607,9 +620,9 @@ export function Dashboard() {
                       )}
 
                       {/* Tags and Mentions Display */}
-                      {(tags.length > 0 || mentions.length > 0) && (
+                      {( mentions.length > 0) && (
                         <div className="flex flex-wrap gap-2">
-                          {tags.map((tag) => (
+                          {/* {tags.map((tag) => (
                             <span
                               key={tag}
                               className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm flex items-center gap-1"
@@ -622,7 +635,7 @@ export function Dashboard() {
                                 <X className="h-3 w-3" />
                               </button>
                             </span>
-                          ))}
+                          ))} */}
                           {mentions.map((mention) => (
                             <span
                               key={mention}
@@ -650,13 +663,13 @@ export function Dashboard() {
                             <Image className="w-5 h-5" />
                             <span>Photo</span>
                           </button>
-                          <button
+                          {/* <button
                             onClick={handleTagButtonClick}
                             className="flex items-center space-x-2 text-gray-400 hover:text-purple-400 transition-colors"
                           >
                             <Tag className="w-5 h-5" />
                             <span>Tag</span>
-                          </button>
+                          </button> */}
                         </div>
                         <button
                           onClick={handlePost}
@@ -698,7 +711,7 @@ export function Dashboard() {
             </main>
 
             {/* Right Sidebar */}
-            <div className="hidden md:block md:col-span-3 h-[calc(100vh-8rem)] sticky top-32 space-y-6">
+            <div className="hidden md:block md:col-span-3 sticky top-32 space-y-6">
               <div className="bg-gray-800 rounded-lg p-6">
                 <h3 className="text-sm font-medium text-gray-400 uppercase mb-4">Users You May Know</h3>
                 <div className="space-y-4">
@@ -739,7 +752,6 @@ export function Dashboard() {
                 </div>
               </div>
 
-              {/* Activity Feed Section */}
               <div className="bg-gray-800 rounded-lg p-6">
                 <h3 className="text-sm font-medium text-gray-400 uppercase mb-4">Activity</h3>
                 <ActivityFeed />

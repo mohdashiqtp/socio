@@ -71,22 +71,16 @@ const Header = memo(() => {
                 onClick={toggleDropdown}
                 className="relative flex items-center justify-center w-8 h-8 rounded-full overflow-hidden bg-gray-700 hover:ring-2 hover:ring-purple-500 transition-all"
               >
-                <img 
-                  src={profile?.avatar_url}
-                  alt={profile?.full_name || 'Profile'} 
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
+                <span className="text-sm text-gray-200">
+                  {profile?.full_name?.charAt(0) || 'U'}
+                </span>
               </button>
 
               {showDropdown && (
                 <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5">
                   <div className="py-1">
-                    <div className="px-4 py-2 text-sm text-gray-200">
+                    <div className="hidden sm:block px-4 py-2 text-sm text-gray-200">
                       {profile?.full_name}
-                    </div>
-                    <div className="px-4 py-2 text-sm text-gray-400">
-                      {profile?.email}
                     </div>
                     <button
                       onClick={handleLogout}
