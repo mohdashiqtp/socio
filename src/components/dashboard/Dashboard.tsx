@@ -270,12 +270,12 @@ export function Dashboard() {
     }
   }, [currentUserId, savePost, unsavePost]);
 
-  // Handel share button
+  // Handle share button
   const handleShare = useCallback((postId: string, content: string) => {
     setShareDialogData({ isOpen: true, postId, content });
   }, []);
 
-  // Single useEffect for auth
+  // useEffect for auth
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -310,29 +310,40 @@ export function Dashboard() {
 
   // Handle post sharing 
   const handlePost = async (postData: any) => {
-    if (!postContent.trim()) {
-      setError("Write something first!");
-      return;
+    if (!currentUserId) return;
+    
+    // Check if postData is a click event
+    if (postData?.type === 'click') {
+      if (!postContent.trim()) {
+        setError("Please write something first");
+        return;
+      }
+      postData = {
+        content: postContent,
+        image: postImage,
+        tags: [],
+        user_id: currentUserId
+      };
     }
 
     setIsPosting(true);
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not logged in!");
-
-      // This is where the actual image upload happens
+      let imageUrl = null;
       if (postData.image) {
-        const imageUrl = await uploadImageToSupabase(postData.image);
-        postData.image = imageUrl;
+        imageUrl = await uploadImageToSupabase(postData.image);
       }
 
       await createPost({
-        variables: postData
+        variables: {
+          content: postData.content,
+          tags: postData.tags || [],
+          image: imageUrl,
+          user_id: currentUserId
+        }
       });
 
-      // Reset everything after posting
       setPostContent('');
       setPostImage(null);
       setMentions([]);
